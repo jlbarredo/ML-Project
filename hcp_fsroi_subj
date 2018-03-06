@@ -1,0 +1,73 @@
+#!/bin/bash
+
+# Use this script to extract subject-space volumetric ROIs from a
+# Freesurfer annotation file. This script expects to find a text file
+# containing a subject list in the same directory as the script. It also
+# expects that subject folders follow the default Freesurfer organization.
+
+# Where your study lives
+SUBJECTS_DIR="/Volumes/Luria/ML"
+
+# Name of your annotation file w/out .annot suffix
+annot="HCP-MMP1"
+
+# Stem for output folder sans hemi prefix
+foldname="MMP1"
+
+hemi="lh rh"
+
+# Edit this line if your script lives elsewhere
+for subject in $(cat test_subjects.txt); do
+
+    # Make mean functional to freesurfer-conformed T1 registration matrix
+    bbregister --s $subject --mov $SUBJECTS_DIR/$subject/PRE/art_mean_uarest.nii --init-spm --reg $SUBJECTS_DIR/$subject/PRE/register.dat --bold
+    
+    for h in $hemi; do
+	mkdir $SUBJECTS_DIR/$subject/$h
+	
+	# Transform annotation to subject space
+	mri_surf2surf --srcsubject fsaverage --trgsubject $subject --hemi $h --sval-annot $SUBJECTS_DIR/fsaverage/label/$h.$annot.annot --tval $SUBJECTS_DIR/$subject/label/$h.$annot.annot
+
+	# Convert annotations to labels
+	mri_annotation2label --subject $subject --hemi $h --annotation $annot --outdir $SUBJECTS_DIR/$subject/$h
+
+	# Loops through all label files in folder - do not store non-label files here!      
+	for l in $SUBJECTS_DIR/$subject/$h/*; do
+	    if test -f "$l"
+	    then
+		echo $l
+		
+		# Map the surface-based labels to volume. The --proj frac flag must be
+		# included to make a ROI that fully covers grey matter
+		mri_label2vol --label $l \
+			  --subject $subject \
+			  --hemi $h \
+			  --identity \
+			  --temp $SUBJECTS_DIR/$subject/mri/T1.mgz \
+			  --o $l.nii \
+			  --proj frac 0 1 0.01
+
+		   # Make morphology quality mask (patch holes w/dilate, erode)
+		   mri_binarize --dilate 1 \
+			   --erode 1 \
+			   --i $l.nii \
+			   --o $l.filled.nii \
+			   --min 1
+
+		   # Clean any areas outside of the cortical ribbon
+		   mris_calc -o $l.tidy.nii $l.filled.nii mul $SUBJECTS_DIR/$subject/mri/$h.ribbon.mgz   
+
+		   # Warp to functional space
+		   mri_vol2vol --mov $SUBJECTS_DIR/$subject/PRE/art_mean_uarest.nii \
+			       --targ $l.tidy.nii \
+			       --o $l.reg.nii \
+			       --reg $SUBJECTS_DIR/$subject/PRE/register.dat \
+			       --inv
+	    fi
+	    done
+
+    done
+    done
+
+
+
