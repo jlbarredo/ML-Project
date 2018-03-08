@@ -3,10 +3,16 @@
 # Use this script to extract subject-space volumetric ROIs from a
 # Freesurfer annotation file. This script expects to find a text file
 # containing a subject list in the same directory as the script. It also
-# expects that subject folders follow the default Freesurfer organization.
+# expects that your subject folders follow the default Freesurfer organization.
 
 # Where your study lives
 SUBJECTS_DIR="/Volumes/Luria/ML"
+
+# Folder in subject directory w/preprocessed data
+prepro="PRE"
+
+# Image determining output geometry
+geo="art_mean_uarest.nii"
 
 # Name of your annotation file w/out .annot suffix
 annot="HCP-MMP1"
@@ -16,11 +22,11 @@ foldname="MMP1"
 
 hemi="lh rh"
 
-# Edit this line if your script lives elsewhere
+# Edit this line if your script and subject textfile are in different directories
 for subject in $(cat test_subjects.txt); do
 
     # Make mean functional to freesurfer-conformed T1 registration matrix
-    bbregister --s $subject --mov $SUBJECTS_DIR/$subject/PRE/art_mean_uarest.nii --init-spm --reg $SUBJECTS_DIR/$subject/PRE/register.dat --bold
+    bbregister --s $subject --mov $SUBJECTS_DIR/$subject/$prepro/$geo --init-spm --reg $SUBJECTS_DIR/$subject/$prepro/register.dat --bold
     
     for h in $hemi; do
 	mkdir $SUBJECTS_DIR/$subject/$h
@@ -47,7 +53,7 @@ for subject in $(cat test_subjects.txt); do
 			  --o $l.nii \
 			  --proj frac 0 1 0.01
 
-		   # Make morphology quality mask (patch holes w/dilate, erode)
+		   # Make morphology quality mask (patch any holes w/dilate, erode)
 		   mri_binarize --dilate 1 \
 			   --erode 1 \
 			   --i $l.nii \
@@ -58,10 +64,10 @@ for subject in $(cat test_subjects.txt); do
 		   mris_calc -o $l.tidy.nii $l.filled.nii mul $SUBJECTS_DIR/$subject/mri/$h.ribbon.mgz   
 
 		   # Warp to functional space
-		   mri_vol2vol --mov $SUBJECTS_DIR/$subject/PRE/art_mean_uarest.nii \
+		   mri_vol2vol --mov $SUBJECTS_DIR/$subject/$prepro/$geo \
 			       --targ $l.tidy.nii \
 			       --o $l.reg.nii \
-			       --reg $SUBJECTS_DIR/$subject/PRE/register.dat \
+			       --reg $SUBJECTS_DIR/$subject/$prepro/register.dat \
 			       --inv
 	    fi
 	    done
